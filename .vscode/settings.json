@@ -1,0 +1,12 @@
+{
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    },
+    "editor.formatOnSave": true,
+    "eslint.validate": ["javascript"],
+    "files.exclude": {
+        "**/node_modules": true,
+        "**/.vscode": true
+    },
+    "typescript.tsdk": "node_modules\\typescript\\lib"
+}
