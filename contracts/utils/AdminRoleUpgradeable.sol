@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import 'lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol';
 
 abstract contract AdminRoleUpgradeable is AccessControlUpgradeable {
     modifier onlyAdmin() {
