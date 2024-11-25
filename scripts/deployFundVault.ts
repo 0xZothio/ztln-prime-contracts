@@ -2,11 +2,18 @@ import hre, { ethers } from 'hardhat';
 import FundVaultImplementationModule from '../ignition/modules/FundVaultImplementation';
 import KycManagerModule from '../ignition/modules/KycManager';
 import ProxyDeploymentModule from '../ignition/modules/ProxyAdminDeployment';
+import Deploy from '../ignition/modules/SubVault_Proxy';
+import { Create3Factory } from '../typechain-types';
 
 async function main() {
     const network = hre.network.name || 'localhost';
     const shouldDeployUSDC = process.env.DEPLOY_USDC === 'true';
     const shouldDeployKycManager = process.env.DEPLOY_KYC_MANAGER !== 'false';
+    const create3FactoryAddress = process.env.CREATE3 || false;
+
+    if (!create3FactoryAddress) {
+        throw new Error('Create3 Factory address not found');
+    }
 
     const [deployer] = await ethers.getSigners();
     console.log('Deploying contracts with account:', await deployer.getAddress());
@@ -40,7 +47,15 @@ async function main() {
     const proxyAdminAddress = await proxyAdmin.getAddress();
     console.log('ProxyAdmin deployed to:', proxyAdminAddress);
 
-    const initData = implementation.interface.encodeFunctionData(
+    //Prepare parameters
+    const salt = hre.ethers.id('TransparentUpgradeableProxy');
+
+    const create3 = await ethers.getContractFactory('Create3Factory')
+    const create3Contract = create3.attach(create3FactoryAddress) as Create3Factory;
+
+    const TransparentUpgradeableProxyFactory = await ethers.getContractFactory('TransparentUpgradeableProxy');
+
+    const initializeData = implementation.interface.encodeFunctionData(
         'initialize',
         [
             process.env.OPERATOR_ADDRESS,
@@ -49,14 +64,34 @@ async function main() {
         ]
     );
 
-    const TransparentUpgradeableProxyFactory = await ethers.getContractFactory('TransparentUpgradeableProxy');
-    const proxy = await TransparentUpgradeableProxyFactory.deploy(
+    // Encode proxy constructor arguments
+    const proxyConstructorArgs = TransparentUpgradeableProxyFactory.interface.encodeDeploy([
         implementationAddress,
-        proxyAdminAddress,
-        initData
-    );
-    const proxyAddress = await proxy.getAddress();
-    console.log('Proxy deployed to:', proxyAddress);
+        initializeData
+    ]);
+
+    // Combine proxy bytecode and constructor arguments
+    const fullBytecode = hre.ethers.concat([
+        TransparentUpgradeableProxyFactory.bytecode,
+        proxyConstructorArgs
+    ]);
+
+    //Generate deterministic address
+    const deterministic_address = await create3Contract.addressOf(salt);
+
+    //Print the deterministic address
+    console.log('Deterministic Address:'.padEnd(50), ':', deterministic_address);
+    await hre.ignition.deploy(Deploy, {
+        parameters: {
+            Deploy: {
+                bytecode: fullBytecode,
+                salt: salt
+            }
+        }
+    });
+
+    //Print the address where the contract was deployed
+    console.log('Proxy Deployed at'.padEnd(50), ':', deterministic_address);
 
     if (network !== 'localhost') {
         console.log('Verifying contracts...');
@@ -67,9 +102,14 @@ async function main() {
             });
 
             await hre.run('verify:verify', {
-                address: proxyAddress,
-                contract: 'contracts/proxy/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
-                constructorArguments: [implementationAddress, proxyAdminAddress, initData]
+                address: proxyAdminAddress,
+                contract: 'contracts/utils/ProxyAdmin.sol:ProxyAdmin'
+            });
+
+            await hre.run('verify:verify', {
+                address: deterministic_address,
+                contract: 'contracts/utils/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
+                constructorArguments: [implementationAddress, proxyAdminAddress, initializeData]
             });
 
             if (shouldDeployKycManager) {
