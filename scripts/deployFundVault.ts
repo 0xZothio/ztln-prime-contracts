@@ -1,8 +1,8 @@
 import hre, { ethers } from 'hardhat';
 import FundVaultImplementationModule from '../ignition/modules/FundVaultImplementation';
 import KycManagerModule from '../ignition/modules/KycManager';
-import ProxyDeploymentModule from '../ignition/modules/ProxyAdminDeployment';
 import Deploy from '../ignition/modules/SubVault_Proxy';
+import USDC from '../ignition/modules/deploy';
 import { Create3Factory } from '../typechain-types';
 
 async function main() {
@@ -20,8 +20,7 @@ async function main() {
 
     let usdcAddress: string;
     if (shouldDeployUSDC) {
-        const USDCFactory = await ethers.getContractFactory('USDC');
-        const usdc = await USDCFactory.deploy();
+        const { usdc } = await hre.ignition.deploy(USDC);
         usdcAddress = await usdc.getAddress();
         console.log('USDC deployed to:', usdcAddress);
     } else {
@@ -43,10 +42,6 @@ async function main() {
     const implementationAddress = await implementation.getAddress();
     console.log('FundVault Implementation deployed to:', implementationAddress);
 
-    const { proxyAdmin } = await hre.ignition.deploy(ProxyDeploymentModule);
-    const proxyAdminAddress = await proxyAdmin.getAddress();
-    console.log('ProxyAdmin deployed to:', proxyAdminAddress);
-
     //Prepare parameters
     const salt = hre.ethers.id('TransparentUpgradeableProxy');
 
@@ -67,6 +62,7 @@ async function main() {
     // Encode proxy constructor arguments
     const proxyConstructorArgs = TransparentUpgradeableProxyFactory.interface.encodeDeploy([
         implementationAddress,
+        await deployer.getAddress(),
         initializeData
     ]);
 
@@ -84,6 +80,7 @@ async function main() {
     await hre.ignition.deploy(Deploy, {
         parameters: {
             Deploy: {
+                create3Factory: create3FactoryAddress,
                 bytecode: fullBytecode,
                 salt: salt
             }
@@ -96,20 +93,21 @@ async function main() {
     if (network !== 'localhost') {
         console.log('Verifying contracts...');
         try {
+
+            await hre.run('verify:verify', {
+                address: usdcAddress,
+                contract: 'contracts/mocks/USDC.sol:USDC'
+            });
+
             await hre.run('verify:verify', {
                 address: implementationAddress,
                 contract: 'contracts/v3/FundVaultV3Upgradeable.sol:FundVaultV3Upgradeable'
             });
 
             await hre.run('verify:verify', {
-                address: proxyAdminAddress,
-                contract: 'contracts/utils/ProxyAdmin.sol:ProxyAdmin'
-            });
-
-            await hre.run('verify:verify', {
                 address: deterministic_address,
-                contract: 'contracts/utils/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
-                constructorArguments: [implementationAddress, proxyAdminAddress, initializeData]
+                contract: '@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
+                constructorArguments: [implementationAddress, await deployer.getAddress(), initializeData]
             });
 
             if (shouldDeployKycManager) {
