@@ -1,19 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "openzeppelin-contracts/access/Ownable.sol";
-
-import "./interfaces/Errors.sol";
-import "./interfaces/IKycManager.sol";
+import './interfaces/IKycManager.sol';
+import './utils/AdminOperatorRolesUpgradeable.sol';
 
 /**
  * Handles address permissions. An address can be KYCed for US or non-US purposes. Additionally, an address may be banned
  */
-contract KycManager is IKycManager, Ownable {
-    mapping(address => User) userData;
-    address[] public userList;
-    uint16 userCount = 0;
-    bool strictOn;
+contract KycManagerUpgradeable is IKycManager, Initializable, AdminOperatorRolesUpgradeable {
+    mapping(address => User) private userData;
+    address[] private userList;
+    uint16 private userCount;
+    bool private strictOn;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(bool _strictOn, address operator) public initializer {
+        __AccessControl_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(OPERATOR_ROLE, operator);
+        strictOn = _strictOn;
+        userCount = 0;
+    }
 
     modifier onlyNonZeroAddress(address _investor) {
         if (_investor == address(0)) {
@@ -22,23 +34,22 @@ contract KycManager is IKycManager, Ownable {
         _;
     }
 
-    constructor(bool _strictOn) {
-        strictOn = _strictOn;
-    }
-
     ////////////////////////////////////////////////////////////
     // Grant
     ////////////////////////////////////////////////////////////
 
-    function bulkGrantKyc(address[] calldata _investors, KycType[] calldata _kycTypes) external onlyOwner {
-        require(_investors.length == _kycTypes.length, "invalid input");
+    function bulkGrantKyc(
+        address[] calldata _investors,
+        KycType[] calldata _kycTypes
+    ) external onlyAdminOrOperator {
+        require(_investors.length == _kycTypes.length, 'invalid input');
         for (uint256 i = 0; i < _investors.length; i++) {
             _grantKyc(_investors[i], _kycTypes[i]);
         }
     }
 
     function _grantKyc(address _investor, KycType _kycType) internal onlyNonZeroAddress(_investor) {
-        require(KycType.US_KYC == _kycType || KycType.GENERAL_KYC == _kycType, "invalid kyc type");
+        require(KycType.US_KYC == _kycType || KycType.GENERAL_KYC == _kycType, 'invalid kyc type');
 
         _addUserIfNotExist(_investor);
         userData[_investor].kycType = _kycType;
@@ -49,7 +60,7 @@ contract KycManager is IKycManager, Ownable {
     // Revoke
     ////////////////////////////////////////////////////////////
 
-    function bulkRevokeKyc(address[] calldata _investors) external onlyOwner {
+    function bulkRevokeKyc(address[] calldata _investors) external onlyAdminOrOperator {
         for (uint256 i = 0; i < _investors.length; i++) {
             _revokeKyc(_investors[i]);
         }
@@ -66,7 +77,7 @@ contract KycManager is IKycManager, Ownable {
     // Ban
     ////////////////////////////////////////////////////////////
 
-    function bulkBan(address[] calldata _investors) external onlyOwner {
+    function bulkBan(address[] calldata _investors) external onlyAdminOrOperator {
         for (uint256 i = 0; i < _investors.length; i++) {
             _setBanned(_investors[i], true);
         }
@@ -76,7 +87,7 @@ contract KycManager is IKycManager, Ownable {
     // Unban
     ////////////////////////////////////////////////////////////
 
-    function bulkUnBan(address[] calldata _investors) external onlyOwner {
+    function bulkUnBan(address[] calldata _investors) external onlyAdminOrOperator {
         for (uint256 i = 0; i < _investors.length; i++) {
             _setBanned(_investors[i], false);
         }
@@ -87,7 +98,7 @@ contract KycManager is IKycManager, Ownable {
         emit Banned(_investor, _status);
     }
 
-    function setStrict(bool _status) external onlyOwner {
+    function setStrict(bool _status) external onlyAdminOrOperator {
         strictOn = _status;
         emit SetStrict(_status);
     }
