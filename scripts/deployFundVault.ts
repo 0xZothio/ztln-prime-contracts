@@ -1,6 +1,6 @@
 import hre, { ethers } from 'hardhat';
 import FundVaultImplementationModule from '../ignition/modules/FundVaultImplementation';
-import KycManagerProxyModule from '../ignition/modules/KycManagerProxy';
+import KycManagerModule from '../ignition/modules/KycManager';
 import USDC from '../ignition/modules/deploy';
 
 interface DeployedContracts {
@@ -9,16 +9,6 @@ interface DeployedContracts {
     kycManagerProxy?: string;
     fundVaultImplementation?: string;
     fundVaultProxy?: string;
-}
-
-interface DeploymentData {
-    network: string;
-    deployer: string;
-    addresses: DeployedContracts;
-    kycManagerInitData?: string;
-    fundVaultInitData?: string;
-    salt?: string;
-    timestamp: number;
 }
 
 // Create3Factory ABI
@@ -99,31 +89,15 @@ async function main() {
             console.log('Using existing USDC at:', deployedContracts.usdc);
         }
 
-        // Deploy KycManager with proxy
+        // Deploy KycManager
         if (shouldDeployKycManager) {
             console.log('\nDeploying KYC Manager...');
-            const KycManagerFactory = await ethers.getContractFactory("KycManagerUpgradeable");
-            kycManagerInitData = KycManagerFactory.interface.encodeFunctionData(
-                "initialize",
-                [true, process.env.OPERATOR_ADDRESS!]
-            );
 
-            const kycDeployment = await hre.ignition.deploy(KycManagerProxyModule, {
-                parameters: {
-                    KycManagerProxy: {
-                        operatorAddress: process.env.OPERATOR_ADDRESS!,
-                        strictMode: true,
-                        initData: kycManagerInitData
-                    }
-                }
-            });
+            const kycDeployment = await hre.ignition.deploy(KycManagerModule);
 
-            deployedContracts.kycManagerImplementation = await kycDeployment.implementation.getAddress();
-            deployedContracts.kycManagerProxy = await kycDeployment.proxy.getAddress();
-            kycManagerAddress = deployedContracts.kycManagerProxy;
+            kycManagerAddress = await kycDeployment.implementation.getAddress();
 
-            console.log('KycManager Implementation deployed to:', deployedContracts.kycManagerImplementation);
-            console.log('KycManager Proxy deployed to:', deployedContracts.kycManagerProxy);
+            console.log('KycManager deployed to:', kycManagerAddress);
         } else {
             if (!process.env.KYC_MANAGER_ADDRESS) {
                 throw new Error('KYC_MANAGER_ADDRESS not set in environment');

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "../interfaces/IERC1404Upgradeable.sol";
+import "../interfaces/IERC1404.sol";
 import "../interfaces/Errors.sol";
 
-abstract contract ERC1404Upgradeable is IERC1404Upgradeable {
+abstract contract ERC1404 is IERC1404 {
     modifier notRestricted(address from, address to) {
         uint8 restrictionCode = detectTransferRestriction(from, to, 0);
         require(restrictionCode == SUCCESS_CODE, messageForTransferRestriction(restrictionCode));

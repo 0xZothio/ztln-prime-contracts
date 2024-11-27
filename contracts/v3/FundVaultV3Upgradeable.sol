@@ -8,10 +8,10 @@ import 'lib/openzeppelin-contracts-upgradeable/contracts/utils/math/MathUpgradea
 import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/ERC20Upgradeable.sol';
 import 'lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol';
 
-import '../interfaces/IFundVaultEventsV3.sol';
+import './interfaces/IFundVaultEventsV3.sol';
 import '../interfaces/IKycManager.sol';
-import '../utils/ERC1404Upgradeable.sol';
-import '../utils/AdminOperatorRolesUpgradeable.sol';
+import '../utils/upgrades/ERC1404Upgradeable.sol';
+import '../utils/upgrades/AdminOperatorRolesUpgradeable.sol';
 
 /**
  * Represents a fund with offchain custodian and NAV with a whitelisted set of holders

@@ -2,9 +2,9 @@
 pragma solidity ^0.8.19;
 
 import "../interfaces/Errors.sol";
-import "./AdminRoleUpgradeable.sol";
+import "./AdminRole.sol";
 
-abstract contract AdminOperatorRolesUpgradeable is AdminRoleUpgradeable {
+abstract contract AdminOperatorRoles is AdminRole {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
 
     modifier onlyAdminOrOperator() {
