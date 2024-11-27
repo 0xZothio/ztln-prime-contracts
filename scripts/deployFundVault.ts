@@ -187,7 +187,8 @@ async function main() {
             if (shouldDeployKycManager && deployedContracts.kycManager) {
                 await verifyContract(
                     deployedContracts.kycManager,
-                    'contracts/KycManager.sol:KycManager'
+                    'contracts/KycManager.sol:KycManager',
+                    [true]
                 )
             }
 

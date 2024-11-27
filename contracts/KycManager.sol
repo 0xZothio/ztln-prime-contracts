@@ -23,7 +23,7 @@ contract KycManager is IKycManager, AdminOperatorRoles {
     }
 
     constructor(bool _strictOn) {
-        grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         strictOn = _strictOn;
     }
 

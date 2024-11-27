@@ -1,7 +1,6 @@
 import '@nomicfoundation/hardhat-ignition-ethers'
 import '@nomicfoundation/hardhat-ledger'
 import '@nomicfoundation/hardhat-toolbox'
-import '@openzeppelin/hardhat-upgrades'
 import dotenv from 'dotenv'
 import { HardhatUserConfig } from 'hardhat/config'
 
@@ -20,13 +19,13 @@ const config: HardhatUserConfig = {
             chainId: 80002,
             url: 'https://rpc-amoy.polygon.technology',
             accounts: ACCOUNTS,
-            ledgerAccounts: [LEDGER_ACCOUNT]
+            // ledgerAccounts: [LEDGER_ACCOUNT]
         },
         holesky: {
             chainId: 17000,
             url: 'https://ethereum-holesky-rpc.publicnode.com',
             accounts: ACCOUNTS,
-            ledgerAccounts: [LEDGER_ACCOUNT]
+            // ledgerAccounts: [LEDGER_ACCOUNT]
         }
     },
     etherscan: {
