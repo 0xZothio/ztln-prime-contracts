@@ -17,7 +17,7 @@ const config: HardhatUserConfig = {
         },
         mainnet: {
             chainId: 1,
-            url: 'https://eth-mainnet.g.alchemy.com/v2/CIivkXArPYIxGAzcxYddSdbqvxDlyuir',
+            url: 'https://eth-mainnet.g.alchemy.com/v2/' + process.env.ALCHEMY_API_KEY,
             // accounts: ACCOUNTS,
             ledgerAccounts: [LEDGER_ACCOUNT]
         },
