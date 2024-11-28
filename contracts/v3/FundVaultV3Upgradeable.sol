@@ -57,7 +57,7 @@ contract FundVaultV3Upgradeable is
         address custodian,
         IKycManager kycManager
     ) public initializer {
-        __ERC20_init('Cogito TFUND', 'TFUND');
+        __ERC20_init('Zoth Tokenized Liquid Notes Prime', 'ZTLN-P');
         __ReentrancyGuard_init();
         __Pausable_init();
         __AccessControl_init();

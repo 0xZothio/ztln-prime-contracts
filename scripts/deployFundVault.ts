@@ -1,14 +1,14 @@
 import hre, { ethers } from 'hardhat'
 
-import USDC from '../ignition/modules/deploy'
 import FundVaultImplementationModule from '../ignition/modules/FundVaultImplementation'
 import KycManagerModule from '../ignition/modules/KycManager'
+import USDC from '../ignition/modules/usdc'
 
 interface DeployedContracts {
     usdc?: string
     kycManager?: string
-    fundVaultImplementation?: string
-    fundVaultProxy?: string
+    implementation?: string
+    ZTLN_Prime?: string
 }
 
 // Create3Factory ABI
@@ -18,15 +18,37 @@ const CREATE3_FACTORY_ABI = [
     'event ContractDeployed(address indexed deployer, bytes32 indexed salt, address indexed deployedAddress, bytes creationCode)'
 ]
 
+/**
+ * Validates that the required environment variables are set.
+ *
+ * The required environment variables are:
+ * - `OPERATOR_ADDRESS` - Provided by Cogito to manage the fund.
+ * - `CUSTODIAN_ADDRESS` - Provided by Cogito to hold the fund's assets.
+ * - `CREATE3` - The address of the Create3Factory contract.
+ *
+ * @throws {Error} If any of the required environment variables are missing.
+ */
 async function validateEnvironment() {
-    const requiredVars = ['OPERATOR_ADDRESS', 'CUSTODIAN_ADDRESS', 'CREATE3']
-    const missingVars = requiredVars.filter(varName => !process.env[varName])
-
-    if (missingVars.length > 0) {
+    const missingVars = ['OPERATOR_ADDRESS', 'CUSTODIAN_ADDRESS', 'CREATE3'].filter(
+        varName => !process.env[varName]
+    )
+    if (missingVars.length)
         throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`)
-    }
 }
 
+/**
+ * Verifies a deployed smart contract on the blockchain.
+ *
+ * This function uses Hardhat's `verify:verify` task to verify the contract
+ * on the blockchain. It logs a success message if the verification is successful,
+ * and logs an error message if the verification fails.
+ *
+ * @param address - The address of the deployed contract.
+ * @param contract - The name of the contract to verify.
+ * @param constructorArguments - An optional array of arguments passed to the contract's constructor.
+ *
+ * @throws Will throw an error if the verification process fails.
+ */
 async function verifyContract(address: string, contract: string, constructorArguments: any[] = []) {
     try {
         await hre.run('verify:verify', {
@@ -41,32 +63,40 @@ async function verifyContract(address: string, contract: string, constructorArgu
 }
 
 async function main() {
+    // Validate environment variables
     await validateEnvironment()
-    console.log('name:', hre.network.name)
-    const network = hre.network.name || 'localhost'
-    const shouldDeployUSDC = process.env.DEPLOY_USDC === 'true'
-    const shouldDeployKycManager = process.env.DEPLOY_KYC_MANAGER !== 'false'
-    let create3FactoryAddress = process.env.CREATE3!
 
+    // Get network name
+    const NETWORK = hre.network.name || 'localhost'
+
+    // Get Create3Factory address
+    const CREATE3_FACTORY = process.env.CREATE3 as string
+
+    // Get Deployer Address
     const [deployer] = await ethers.getSigners()
     const deployerAddress = await deployer.getAddress()
-    console.log('Deploying contracts with account:', deployerAddress)
+
+    console.log('--------Deploying Contracts--------')
+    console.log('Network:', NETWORK)
+    console.log('Create3Factory Address:', CREATE3_FACTORY)
+    console.log('Deployer Address:', deployerAddress)
     console.log(
-        'Account balance:',
+        'Deployer Account balance:',
         (await deployer.provider.getBalance(deployerAddress)).toString()
     )
 
+    // Check if USDC and KYC Manager should be deployed
+    const shouldDeployUSDC = process.env.DEPLOY_USDC === 'true'
+    const shouldDeployKycManager = process.env.DEPLOY_KYC_MANAGER !== 'false'
+
     // Verify Create3Factory is deployed
-    console.log('Verifying Create3Factory...')
-    const create3Code = await ethers.provider.getCode(create3FactoryAddress)
-    if (create3Code === '0x') {
-        throw new Error('Create3Factory not deployed at specified address')
-    }
+    console.log('\n\n Verifying Create3Factory...')
+    const create3Code = await ethers.provider.getCode(CREATE3_FACTORY)
+
+    // If Create3Factory is not deployed, throw an error
+    if (create3Code === '0x') throw new Error('Create3Factory not deployed at specified address')
 
     const deployedContracts: DeployedContracts = {}
-    let kycManagerInitData: string | undefined
-    let fundVaultInitData: string | undefined
-    let kycManagerAddress: string
 
     try {
         // Deploy USDC if needed
@@ -89,75 +119,61 @@ async function main() {
 
             const kycDeployment = await hre.ignition.deploy(KycManagerModule)
 
-            kycManagerAddress = await kycDeployment.implementation.getAddress()
-            deployedContracts.kycManager = kycManagerAddress
+            deployedContracts.kycManager = await kycDeployment.kyc_manager.getAddress()
 
-            console.log('KycManager deployed to:', kycManagerAddress)
+            console.log('KycManager deployed to:', deployedContracts.kycManager)
         } else {
             if (!process.env.KYC_MANAGER_ADDRESS) {
                 throw new Error('KYC_MANAGER_ADDRESS not set in environment')
             }
-            kycManagerAddress = process.env.KYC_MANAGER_ADDRESS
-            deployedContracts.kycManager = kycManagerAddress
-
-            console.log('Using existing KycManager at:', kycManagerAddress)
+            deployedContracts.kycManager = process.env.KYC_MANAGER_ADDRESS
+            console.log('Using existing KycManager at:', deployedContracts.kycManager)
         }
 
         // Deploy FundVault Implementation
         console.log('\nDeploying FundVault...')
         const fundVaultDeployment = await hre.ignition.deploy(FundVaultImplementationModule)
-        deployedContracts.fundVaultImplementation =
-            await fundVaultDeployment.implementation.getAddress()
-        console.log(
-            'FundVault Implementation deployed to:',
-            deployedContracts.fundVaultImplementation
-        )
+        deployedContracts.implementation = await fundVaultDeployment.implementation.getAddress()
+        console.log('FundVault Implementation deployed to:', deployedContracts.implementation)
 
         // Create FundVault initialization data
         const FundVaultFactory = await ethers.getContractFactory('FundVaultV3Upgradeable')
-        fundVaultInitData = FundVaultFactory.interface.encodeFunctionData('initialize', [
+        const fundVaultInitData = FundVaultFactory.interface.encodeFunctionData('initialize', [
             process.env.OPERATOR_ADDRESS!,
             process.env.CUSTODIAN_ADDRESS!,
-            kycManagerAddress
+            deployedContracts.kycManager
         ])
 
         // Get Create3 factory instance
-        const create3Contract = new ethers.Contract(
-            create3FactoryAddress,
-            CREATE3_FACTORY_ABI,
-            deployer
-        )
+        const create3Contract = new ethers.Contract(CREATE3_FACTORY, CREATE3_FACTORY_ABI, deployer)
 
-        // Generate salt
-        const salt = ethers.id('TransparentUpgradeableProxy')
+        // Generate salt for ZTLN Prime token
+        const salt = ethers.id('ZTLN-Prime')
 
         // Get TransparentUpgradeableProxy contract factory
-        const TransparentUpgradeableProxyFactory = await ethers.getContractFactory(
-            'TransparentUpgradeableProxy'
+        const TUPFactory = await ethers.getContractFactory(
+            'lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy'
         )
 
         // Encode proxy constructor arguments
-        const proxyConstructorArgs = TransparentUpgradeableProxyFactory.interface.encodeDeploy([
-            deployedContracts.fundVaultImplementation,
+        const proxyConstructorArgs = TUPFactory.interface.encodeDeploy([
+            deployedContracts.implementation,
             deployerAddress,
             fundVaultInitData
         ])
 
         // Combine proxy bytecode and constructor arguments
-        const fullBytecode = ethers.concat([
-            TransparentUpgradeableProxyFactory.bytecode,
-            proxyConstructorArgs
-        ])
+        const fullBytecode = ethers.concat([TUPFactory.bytecode, proxyConstructorArgs])
 
         console.log('Getting deterministic address...')
         const deterministicAddress = await create3Contract.addressOf(salt)
-        console.log('Calculated proxy address:', deterministicAddress)
+        console.log('Calculated ZTLN Prime address:', deterministicAddress)
 
         // Check if already deployed
         const existingCode = await ethers.provider.getCode(deterministicAddress)
         if (existingCode !== '0x') {
             console.log('Contract already deployed at deterministic address')
-            deployedContracts.fundVaultProxy = deterministicAddress
+            deployedContracts.ZTLN_Prime = deterministicAddress
         } else {
             console.log('Deploying proxy via Create3...')
             const tx = await create3Contract.create(salt, fullBytecode)
@@ -166,7 +182,7 @@ async function main() {
             const receipt = await tx.wait()
             console.log('Create3 deployment transaction confirmed')
 
-            deployedContracts.fundVaultProxy = deterministicAddress
+            deployedContracts.ZTLN_Prime = deterministicAddress
             console.log('FundVault Proxy deployed to:', deterministicAddress)
 
             // Verify deployment
@@ -177,7 +193,7 @@ async function main() {
         }
 
         // Verify contracts if not on localhost
-        if (network !== 'localhost' && network !== 'hardhat') {
+        if (NETWORK !== 'localhost' && NETWORK !== 'hardhat') {
             console.log('\nVerifying contracts...')
 
             if (shouldDeployUSDC && deployedContracts.usdc) {
@@ -192,21 +208,17 @@ async function main() {
                 )
             }
 
-            if (deployedContracts.fundVaultImplementation) {
+            if (deployedContracts.implementation) {
                 await verifyContract(
-                    deployedContracts.fundVaultImplementation,
+                    deployedContracts.implementation,
                     'contracts/v3/FundVaultV3Upgradeable.sol:FundVaultV3Upgradeable'
                 )
 
-                if (deployedContracts.fundVaultProxy) {
+                if (deployedContracts.ZTLN_Prime) {
                     await verifyContract(
-                        deployedContracts.fundVaultProxy,
-                        '@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
-                        [
-                            deployedContracts.fundVaultImplementation,
-                            deployerAddress,
-                            fundVaultInitData
-                        ]
+                        deployedContracts.ZTLN_Prime,
+                        'lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
+                        [deployedContracts.implementation, deployerAddress, fundVaultInitData]
                     )
                 }
             }

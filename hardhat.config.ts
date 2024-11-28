@@ -15,17 +15,23 @@ const config: HardhatUserConfig = {
         hardhat: {
             allowUnlimitedContractSize: true
         },
+        mainnet: {
+            chainId: 1,
+            url: 'https://eth-mainnet.g.alchemy.com/v2/CIivkXArPYIxGAzcxYddSdbqvxDlyuir',
+            // accounts: ACCOUNTS,
+            ledgerAccounts: [LEDGER_ACCOUNT]
+        },
         amoy: {
             chainId: 80002,
             url: 'https://rpc-amoy.polygon.technology',
-            accounts: ACCOUNTS,
-            // ledgerAccounts: [LEDGER_ACCOUNT]
+            // accounts: ACCOUNTS,
+            ledgerAccounts: [LEDGER_ACCOUNT]
         },
         holesky: {
             chainId: 17000,
             url: 'https://ethereum-holesky-rpc.publicnode.com',
-            accounts: ACCOUNTS,
-            // ledgerAccounts: [LEDGER_ACCOUNT]
+            // accounts: ACCOUNTS,
+            ledgerAccounts: [LEDGER_ACCOUNT]
         }
     },
     etherscan: {
