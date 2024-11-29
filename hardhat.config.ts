@@ -38,7 +38,7 @@ const config: HardhatUserConfig = {
         apiKey: {
             polygon: process.env.POLYGONSCAN_API_KEY as string,
             amoy: process.env.POLYGONSCAN_API_KEY as string,
-            ethereum: process.env.ETHERSCAN_API_KEY as string
+            mainnet: process.env.ETHERSCAN_API_KEY as string
         },
         customChains: [
             {
