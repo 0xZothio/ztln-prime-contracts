@@ -139,6 +139,7 @@ async function main() {
         // Create FundVault initialization data
         const FundVaultFactory = await ethers.getContractFactory('FundVaultV3Upgradeable')
         const fundVaultInitData = FundVaultFactory.interface.encodeFunctionData('initialize', [
+            process.env.DEPLOYER_ADDRESS!,
             process.env.OPERATOR_ADDRESS!,
             process.env.CUSTODIAN_ADDRESS!,
             deployedContracts.kycManager
@@ -148,7 +149,7 @@ async function main() {
         const create3Contract = new ethers.Contract(CREATE3_FACTORY, CREATE3_FACTORY_ABI, deployer)
 
         // Generate salt for ZTLN Prime token
-        const salt = ethers.id('ZTLN-Prime')
+        const salt = ethers.id('ZTLN-Prime 1')
 
         // Get TransparentUpgradeableProxy contract factory
         const TUPFactory = await ethers.getContractFactory(
@@ -204,7 +205,7 @@ async function main() {
                 await verifyContract(
                     deployedContracts.kycManager,
                     'contracts/KycManager.sol:KycManager',
-                    [true]
+                    [true, process.env.DEPLOYER_ADDRESS]
                 )
             }
 

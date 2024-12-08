@@ -52,6 +52,7 @@ contract FundVaultV3Upgradeable is
     ////////////////////////////////////////////////////////////
 
     function initialize(
+        address owner,
         address operator,
         address custodian,
         IKycManager kycManager
@@ -61,8 +62,9 @@ contract FundVaultV3Upgradeable is
         __Pausable_init();
         __AccessControl_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, owner);
         _grantRole(OPERATOR_ROLE, operator);
+        _setRoleAdmin(OPERATOR_ROLE, DEFAULT_ADMIN_ROLE);
 
         _custodian = custodian;
         _kycManager = kycManager;
