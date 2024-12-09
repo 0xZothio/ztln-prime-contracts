@@ -139,7 +139,6 @@ async function main() {
         // Create FundVault initialization data
         const FundVaultFactory = await ethers.getContractFactory('FundVaultV3Upgradeable')
         const fundVaultInitData = FundVaultFactory.interface.encodeFunctionData('initialize', [
-            process.env.DEPLOYER_ADDRESS!,
             process.env.OPERATOR_ADDRESS!,
             process.env.CUSTODIAN_ADDRESS!,
             deployedContracts.kycManager
@@ -205,7 +204,7 @@ async function main() {
                 await verifyContract(
                     deployedContracts.kycManager,
                     'contracts/KycManager.sol:KycManager',
-                    [true, process.env.DEPLOYER_ADDRESS]
+                    [true]
                 )
             }
 

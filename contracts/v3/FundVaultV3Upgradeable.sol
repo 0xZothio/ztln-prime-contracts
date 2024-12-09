@@ -52,7 +52,6 @@ contract FundVaultV3Upgradeable is
     ////////////////////////////////////////////////////////////
 
     function initialize(
-        address owner,
         address operator,
         address custodian,
         IKycManager kycManager
@@ -62,7 +61,7 @@ contract FundVaultV3Upgradeable is
         __Pausable_init();
         __AccessControl_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, owner);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OPERATOR_ROLE, operator);
         _setRoleAdmin(OPERATOR_ROLE, DEFAULT_ADMIN_ROLE);
 
@@ -163,7 +162,7 @@ contract FundVaultV3Upgradeable is
     ////////////////////////////////////////////////////////////
 
     /**
-     * Request a subscription to the fund
+     *
      * @param asset Asset to deposit
      * @param amount Amount of {asset} to subscribe
      */
