@@ -2,27 +2,14 @@ import fs from 'fs'
 import hre, { ethers } from 'hardhat'
 import path from 'path'
 
-import ImplementationModule from '../ignition/modules/Implementation'
-import KycManagerModule from '../ignition/modules/KycManager'
+import implementation from '../ignition/modules/Implementation'
+import KycManagerModule from '../ignition/modules/kyc_manager'
 
 interface DeployedContracts {
     usdc?: string
     kycManager?: string
     implementation?: string
     ZTLN_Prime?: string
-}
-
-// Config interface
-interface NetworkConfig {
-    network: string
-    chainId: number
-    kycManager: string
-    ZTLNImplementation: string
-    ZTLNProxy: string
-}
-
-interface DeploymentConfig {
-    [key: number]: NetworkConfig
 }
 
 const CREATE3_FACTORY_ABI = [
@@ -63,15 +50,6 @@ async function updateDeploymentConfig(
 
     // Read the current config file
     let configContent = fs.readFileSync(configPath, 'utf8')
-
-    // Create new config object
-    const newConfig = {
-        network: networkName,
-        chainId: chainId,
-        kycManager: kycManager,
-        ZTLNImplementation: implementation,
-        ZTLNProxy: proxy
-    }
 
     // Find the existing config for this chainId
     const chainIdString = chainId.toString()
@@ -147,7 +125,7 @@ async function main() {
 
         // Deploy ZTLN Implementation
         console.log('\nDeploying ZTLN Implementation...')
-        const ztlnDeployment = await hre.ignition.deploy(ImplementationModule)
+        const ztlnDeployment = await hre.ignition.deploy(implementation)
         deployedContracts.implementation = await ztlnDeployment.implementation.getAddress()
         console.log('ZTLNPrime Implementation deployed to:', deployedContracts.implementation)
 
