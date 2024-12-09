@@ -162,7 +162,7 @@ contract FundVaultV3Upgradeable is
     ////////////////////////////////////////////////////////////
 
     /**
-     *
+     * Request a subscription to the fund
      * @param asset Asset to deposit
      * @param amount Amount of {asset} to subscribe
      */
