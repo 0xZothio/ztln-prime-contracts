@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import 'lib/openzeppelin-contracts/contracts/access/AccessControl.sol';
+import '@openzeppelin/contracts/access/AccessControl.sol';
 
 abstract contract AdminRole is AccessControl {
     modifier onlyAdmin() {

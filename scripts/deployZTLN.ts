@@ -1,8 +1,9 @@
+import fs from 'fs'
 import hre, { ethers } from 'hardhat'
+import path from 'path'
 
-import FundVaultImplementationModule from '../ignition/modules/FundVaultImplementation'
+import ImplementationModule from '../ignition/modules/Implementation'
 import KycManagerModule from '../ignition/modules/KycManager'
-import USDC from '../ignition/modules/usdc'
 
 interface DeployedContracts {
     usdc?: string
@@ -11,23 +12,25 @@ interface DeployedContracts {
     ZTLN_Prime?: string
 }
 
-// Create3Factory ABI
+// Config interface
+interface NetworkConfig {
+    network: string
+    chainId: number
+    kycManager: string
+    ZTLNImplementation: string
+    ZTLNProxy: string
+}
+
+interface DeploymentConfig {
+    [key: number]: NetworkConfig
+}
+
 const CREATE3_FACTORY_ABI = [
     'function create(bytes32 _salt, bytes calldata _creationCode) external returns (address)',
     'function addressOf(bytes32 _salt) external view returns (address)',
     'event ContractDeployed(address indexed deployer, bytes32 indexed salt, address indexed deployedAddress, bytes creationCode)'
 ]
 
-/**
- * Validates that the required environment variables are set.
- *
- * The required environment variables are:
- * - `OPERATOR_ADDRESS` - Provided by Cogito to manage the fund.
- * - `CUSTODIAN_ADDRESS` - Provided by Cogito to hold the fund's assets.
- * - `CREATE3` - The address of the Create3Factory contract.
- *
- * @throws {Error} If any of the required environment variables are missing.
- */
 async function validateEnvironment() {
     const missingVars = ['OPERATOR_ADDRESS', 'CUSTODIAN_ADDRESS', 'CREATE3'].filter(
         varName => !process.env[varName]
@@ -36,19 +39,6 @@ async function validateEnvironment() {
         throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`)
 }
 
-/**
- * Verifies a deployed smart contract on the blockchain.
- *
- * This function uses Hardhat's `verify:verify` task to verify the contract
- * on the blockchain. It logs a success message if the verification is successful,
- * and logs an error message if the verification fails.
- *
- * @param address - The address of the deployed contract.
- * @param contract - The name of the contract to verify.
- * @param constructorArguments - An optional array of arguments passed to the contract's constructor.
- *
- * @throws Will throw an error if the verification process fails.
- */
 async function verifyContract(address: string, contract: string, constructorArguments: any[] = []) {
     try {
         await hre.run('verify:verify', {
@@ -62,22 +52,69 @@ async function verifyContract(address: string, contract: string, constructorArgu
     }
 }
 
+async function updateDeploymentConfig(
+    chainId: number,
+    networkName: string,
+    kycManager: string,
+    implementation: string,
+    proxy: string
+) {
+    const configPath = path.join(__dirname, '../deployment_config.ts')
+
+    // Read the current config file
+    let configContent = fs.readFileSync(configPath, 'utf8')
+
+    // Create new config object
+    const newConfig = {
+        network: networkName,
+        chainId: chainId,
+        kycManager: kycManager,
+        ZTLNImplementation: implementation,
+        ZTLNProxy: proxy
+    }
+
+    // Find the existing config for this chainId
+    const chainIdString = chainId.toString()
+    const regex = new RegExp(`'${chainIdString}':\\s*{[^}]*}`)
+
+    // Create the new config string
+    const newConfigString = `'${chainIdString}': {
+        network: '${networkName}',
+        chainId: ${chainId},
+        kycManager: '${kycManager}',
+        ZTLNImplementation: '${implementation}',
+        ZTLNProxy: '${proxy}'
+    }`
+
+    // Replace the existing config or add new one
+    if (configContent.includes(`'${chainIdString}':`)) {
+        configContent = configContent.replace(regex, newConfigString)
+    } else {
+        // Add new chain config before the last closing brace
+        configContent = configContent.replace(/}(\s*)$/, `    ${newConfigString},\n}$1`)
+    }
+
+    // Write the updated config back to file
+    fs.writeFileSync(configPath, configContent)
+    console.log(`Updated deployment config for chain ${chainId}`)
+}
+
 async function main() {
-    // Validate environment variables
     await validateEnvironment()
 
-    // Get network name
     const NETWORK = hre.network.name || 'localhost'
+    const chainId = hre.network.config.chainId
+    if (!chainId) {
+        throw new Error('Chain ID not found in network config')
+    }
 
-    // Get Create3Factory address
     const CREATE3_FACTORY = process.env.CREATE3 as string
-
-    // Get Deployer Address
     const [deployer] = await ethers.getSigners()
     const deployerAddress = await deployer.getAddress()
 
     console.log('--------Deploying Contracts--------')
     console.log('Network:', NETWORK)
+    console.log('Chain ID:', chainId)
     console.log('Create3Factory Address:', CREATE3_FACTORY)
     console.log('Deployer Address:', deployerAddress)
     console.log(
@@ -85,42 +122,20 @@ async function main() {
         (await deployer.provider.getBalance(deployerAddress)).toString()
     )
 
-    // Check if USDC and KYC Manager should be deployed
-    const shouldDeployUSDC = process.env.DEPLOY_USDC === 'true'
     const shouldDeployKycManager = process.env.DEPLOY_KYC_MANAGER !== 'false'
 
-    // Verify Create3Factory is deployed
     console.log('\n\n Verifying Create3Factory...')
     const create3Code = await ethers.provider.getCode(CREATE3_FACTORY)
-
-    // If Create3Factory is not deployed, throw an error
     if (create3Code === '0x') throw new Error('Create3Factory not deployed at specified address')
 
     const deployedContracts: DeployedContracts = {}
 
     try {
-        // Deploy USDC if needed
-        if (shouldDeployUSDC) {
-            console.log('\nDeploying USDC...')
-            const { usdc } = await hre.ignition.deploy(USDC)
-            deployedContracts.usdc = await usdc.getAddress()
-            console.log('USDC deployed to:', deployedContracts.usdc)
-        } else {
-            if (!process.env.USDC_ADDRESS) {
-                throw new Error('USDC_ADDRESS not set in environment')
-            }
-            deployedContracts.usdc = process.env.USDC_ADDRESS
-            console.log('Using existing USDC at:', deployedContracts.usdc)
-        }
-
-        // Deploy KycManager
+        // Deploy KycManager if needed
         if (shouldDeployKycManager) {
             console.log('\nDeploying KYC Manager...')
-
             const kycDeployment = await hre.ignition.deploy(KycManagerModule)
-
             deployedContracts.kycManager = await kycDeployment.kyc_manager.getAddress()
-
             console.log('KycManager deployed to:', deployedContracts.kycManager)
         } else {
             if (!process.env.KYC_MANAGER_ADDRESS) {
@@ -130,40 +145,32 @@ async function main() {
             console.log('Using existing KycManager at:', deployedContracts.kycManager)
         }
 
-        // Deploy FundVault Implementation
-        console.log('\nDeploying FundVault...')
-        const fundVaultDeployment = await hre.ignition.deploy(FundVaultImplementationModule)
-        deployedContracts.implementation = await fundVaultDeployment.implementation.getAddress()
-        console.log('FundVault Implementation deployed to:', deployedContracts.implementation)
+        // Deploy ZTLN Implementation
+        console.log('\nDeploying ZTLN Implementation...')
+        const ztlnDeployment = await hre.ignition.deploy(ImplementationModule)
+        deployedContracts.implementation = await ztlnDeployment.implementation.getAddress()
+        console.log('ZTLNPrime Implementation deployed to:', deployedContracts.implementation)
 
-        // Create FundVault initialization data
-        const FundVaultFactory = await ethers.getContractFactory('FundVaultV3Upgradeable')
-        const fundVaultInitData = FundVaultFactory.interface.encodeFunctionData('initialize', [
+        // Create ZTLNPrime initialization data
+        const ZTLNPrimeFactory = await ethers.getContractFactory('ZTLNPrime')
+        const initData = ZTLNPrimeFactory.interface.encodeFunctionData('initialize', [
+            process.env.DEPLOYER_ADDRESS!,
             process.env.OPERATOR_ADDRESS!,
             process.env.CUSTODIAN_ADDRESS!,
             deployedContracts.kycManager
         ])
 
-        // Get Create3 factory instance
-        const create3Contract = new ethers.Contract(CREATE3_FACTORY, CREATE3_FACTORY_ABI, deployer)
-
-        // Generate salt for ZTLN Prime token
-        const salt = ethers.id('ZTLN-Prime 1')
-
-        // Get TransparentUpgradeableProxy contract factory
-        const TUPFactory = await ethers.getContractFactory(
-            'lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy'
-        )
-
-        // Encode proxy constructor arguments
-        const proxyConstructorArgs = TUPFactory.interface.encodeDeploy([
-            deployedContracts.implementation,
-            deployerAddress,
-            fundVaultInitData
+        // For UUPS, deploy the implementation and create ERC1967Proxy
+        const ERC1967ProxyFactory = await ethers.getContractFactory('ERC1967Proxy')
+        const proxyConstructorArgs = [deployedContracts.implementation, initData]
+        const fullBytecode = ethers.concat([
+            ERC1967ProxyFactory.bytecode,
+            ERC1967ProxyFactory.interface.encodeDeploy(proxyConstructorArgs)
         ])
 
-        // Combine proxy bytecode and constructor arguments
-        const fullBytecode = ethers.concat([TUPFactory.bytecode, proxyConstructorArgs])
+        // Get Create3 factory instance
+        const create3Contract = new ethers.Contract(CREATE3_FACTORY, CREATE3_FACTORY_ABI, deployer)
+        const salt = ethers.id('ZTLN-Prime new 121-1') //chanage to ts
 
         console.log('Getting deterministic address...')
         const deterministicAddress = await create3Contract.addressOf(salt)
@@ -183,22 +190,26 @@ async function main() {
             console.log('Create3 deployment transaction confirmed')
 
             deployedContracts.ZTLN_Prime = deterministicAddress
-            console.log('FundVault Proxy deployed to:', deterministicAddress)
+            console.log('ZTLNPrime Proxy deployed to:', deterministicAddress)
 
-            // Verify deployment
             const deployedCode = await ethers.provider.getCode(deterministicAddress)
             if (deployedCode === '0x') {
                 throw new Error('Proxy deployment verification failed')
             }
         }
 
+        // Update deployment config
+        await updateDeploymentConfig(
+            chainId,
+            NETWORK,
+            deployedContracts.kycManager!,
+            deployedContracts.implementation!,
+            deployedContracts.ZTLN_Prime!
+        )
+
         // Verify contracts if not on localhost
         if (NETWORK !== 'localhost' && NETWORK !== 'hardhat') {
             console.log('\nVerifying contracts...')
-
-            if (shouldDeployUSDC && deployedContracts.usdc) {
-                await verifyContract(deployedContracts.usdc, 'contracts/mocks/USDC.sol:USDC')
-            }
 
             if (shouldDeployKycManager && deployedContracts.kycManager) {
                 await verifyContract(
@@ -211,16 +222,16 @@ async function main() {
             if (deployedContracts.implementation) {
                 await verifyContract(
                     deployedContracts.implementation,
-                    'contracts/v3/FundVaultV3Upgradeable.sol:FundVaultV3Upgradeable'
+                    'contracts/v3/ZTLNPrime.sol:ZTLNPrime'
                 )
+            }
 
-                if (deployedContracts.ZTLN_Prime) {
-                    await verifyContract(
-                        deployedContracts.ZTLN_Prime,
-                        'lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol:TransparentUpgradeableProxy',
-                        [deployedContracts.implementation, deployerAddress, fundVaultInitData]
-                    )
-                }
+            if (deployedContracts.ZTLN_Prime) {
+                await verifyContract(
+                    deterministicAddress,
+                    '@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol:ERC1967Proxy',
+                    [deployedContracts.implementation, initData]
+                )
             }
         }
 
@@ -232,6 +243,8 @@ async function main() {
                 console.log(`${name}: ${address}`)
             }
         })
+
+        console.log('\nDeployment config has been updated successfully!')
     } catch (error) {
         if (error instanceof Error) {
             console.error('\nDeployment failed:', error.message)

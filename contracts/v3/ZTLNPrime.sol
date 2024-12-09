@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/extensions/ERC20PausableUpgradeable.sol';
-import 'lib/openzeppelin-contracts-upgradeable/contracts/security/ReentrancyGuardUpgradeable.sol';
-import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/utils/SafeERC20Upgradeable.sol';
-import 'lib/openzeppelin-contracts-upgradeable/contracts/utils/math/MathUpgradeable.sol';
-import 'lib/openzeppelin-contracts-upgradeable/contracts/token/ERC20/ERC20Upgradeable.sol';
-import 'lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol';
-import 'lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol';
+import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import '@openzeppelin/contracts/utils/math/Math.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
+import '@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol';
+import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 
 import './interfaces/IFundVaultEventsV3.sol';
 import '../interfaces/IKycManager.sol';
-import '../utils/upgrades/ERC1404Upgradeable.sol';
+import '../utils/ERC1404.sol';
 import '../utils/upgrades/AdminOperatorRolesUpgradeable.sol';
 
 /**
@@ -27,22 +28,24 @@ import '../utils/upgrades/AdminOperatorRolesUpgradeable.sol';
  * - Call {transferAllToCustodian} after funds are received to send to offchain custodian
  * - Call {processRedemption} after a redemption request is approved to disburse underlying funds to investor
  */
-contract FundVaultV3Upgradeable is
+contract ZTLNPrime is
     Initializable,
     ERC20Upgradeable,
     ReentrancyGuardUpgradeable,
     PausableUpgradeable,
     AdminOperatorRolesUpgradeable,
-    ERC1404Upgradeable,
+    ERC1404,
+    UUPSUpgradeable,
     IFundVaultEventsV3
 {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
-    using MathUpgradeable for uint256;
+    using SafeERC20 for IERC20;
+    using Math for uint256;
 
     uint256 public _latestNav;
     address public _custodian;
     IKycManager public _kycManager;
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
@@ -52,6 +55,7 @@ contract FundVaultV3Upgradeable is
     ////////////////////////////////////////////////////////////
 
     function initialize(
+        address owner,
         address operator,
         address custodian,
         IKycManager kycManager
@@ -60,8 +64,9 @@ contract FundVaultV3Upgradeable is
         __ReentrancyGuard_init();
         __Pausable_init();
         __AccessControl_init();
+        __UUPSUpgradeable_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, owner);
         _grantRole(OPERATOR_ROLE, operator);
         _setRoleAdmin(OPERATOR_ROLE, DEFAULT_ADMIN_ROLE);
 
@@ -116,9 +121,8 @@ contract FundVaultV3Upgradeable is
         uint256 amount,
         uint256 shares
     ) external onlyAdminOrOperator {
-        _validateRedemption(investor, shares);
-        _burn(investor, shares);
-        IERC20Upgradeable(asset).safeTransfer(investor, amount);
+        _burn(address(this), shares);
+        IERC20(asset).safeTransfer(investor, amount);
 
         emit ProcessRedemption(investor, shares, asset, amount);
     }
@@ -127,7 +131,7 @@ contract FundVaultV3Upgradeable is
      * Sweeps all asset to {_custodian}
      */
     function transferAllToCustodian(address asset) external onlyAdminOrOperator {
-        uint256 balance = IERC20Upgradeable(asset).balanceOf(address(this));
+        uint256 balance = IERC20(asset).balanceOf(address(this));
         transferToCustodian(asset, balance);
     }
 
@@ -139,7 +143,7 @@ contract FundVaultV3Upgradeable is
             revert InvalidAddress(_custodian);
         }
 
-        IERC20Upgradeable(asset).safeTransfer(_custodian, amount);
+        IERC20(asset).safeTransfer(_custodian, amount);
         emit TransferToCustodian(_custodian, asset, amount);
     }
 
@@ -173,9 +177,7 @@ contract FundVaultV3Upgradeable is
         _kycManager.onlyKyc(msg.sender);
         _kycManager.onlyNotBanned(msg.sender);
 
-        _validateDeposit(msg.sender, asset, amount);
-
-        IERC20Upgradeable(asset).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
         // scale amount to 6 decimals
         uint256 shares = (amount * 1e6) / 10 ** ERC20(asset).decimals();
@@ -198,7 +200,7 @@ contract FundVaultV3Upgradeable is
         _kycManager.onlyKyc(msg.sender);
         _kycManager.onlyNotBanned(msg.sender);
 
-        _validateRedemption(msg.sender, shares);
+        IERC20(address(this)).safeTransferFrom(msg.sender, address(this), shares);
 
         emit RequestRedemption(msg.sender, shares, asset);
         return 0;
@@ -210,14 +212,18 @@ contract FundVaultV3Upgradeable is
      * If sender is US, check receiver.
      * @dev will be called during: transfer, transferFrom, mint, burn
      */
-    function _beforeTokenTransfer(address from, address to, uint256) internal view override {
+    function _update(address from, address to, uint256 amount) internal override {
         // no restrictions on minting or burning, or self-transfers
         if (from == address(0) || to == address(0) || to == address(this)) {
-            return;
+            return super._update(from, to, amount);
+        } else {
+            uint8 restrictionCode = detectTransferRestriction(from, to, 0);
+            require(
+                restrictionCode == SUCCESS_CODE,
+                messageForTransferRestriction(restrictionCode)
+            );
+            super._update(from, to, amount);
         }
-
-        uint8 restrictionCode = detectTransferRestriction(from, to, 0);
-        require(restrictionCode == SUCCESS_CODE, messageForTransferRestriction(restrictionCode));
     }
 
     ////////////////////////////////////////////////////////////
@@ -242,32 +248,11 @@ contract FundVaultV3Upgradeable is
     }
 
     ////////////////////////////////////////////////////////////
-    // Validation
+    // Upgrade functionality
     ////////////////////////////////////////////////////////////
 
-    /**
-     * Ensures deposit amount is okay
-     */
-    function _validateDeposit(address user, address asset, uint256 amount) internal view {
-        // gas saving by defining local variable
-        uint256 balance = IERC20Upgradeable(asset).balanceOf(user);
-        if (amount > balance) {
-            revert InsufficientBalance(balance, amount);
-        }
-        if (IERC20Upgradeable(asset).allowance(user, address(this)) < amount) {
-            revert InsufficientAllowance(
-                IERC20Upgradeable(asset).allowance(user, address(this)),
-                amount
-            );
-        }
-    }
-
-    /**
-     * Ensures redemption amount is okay
-     */
-    function _validateRedemption(address user, uint256 share) internal view virtual {
-        if (share > balanceOf(user)) {
-            revert InsufficientBalance(balanceOf(user), share);
-        }
-    }
+    /// @notice Authorizes an upgrade to a new implementation
+    /// @dev Only callable by admin role
+    /// @param newImplementation Address of the new implementation
+    function _authorizeUpgrade(address newImplementation) internal override onlyAdmin {}
 }
