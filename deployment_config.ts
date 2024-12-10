@@ -10,9 +10,9 @@ export const deploymentConfig: {
     '1': {
         network: 'mainnet',
         chainId: 1,
-        kycManager: '',
-        ZTLNImplementation: '',
-        ZTLNProxy: ''
+        kycManager: '0xaDB41aEe4c5CD373199F3509298824c473F671F7',
+        ZTLNImplementation: '0x982dAA73B74a9cE2b02bB0f0E7A15592f26dA318',
+        ZTLNProxy: '0xfEd3D6557Dc46A1B25d0A6F666513Cb33835864B'
     },
     '169': {
         network: 'manta',

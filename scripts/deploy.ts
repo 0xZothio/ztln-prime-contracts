@@ -2,7 +2,7 @@ import fs from 'fs'
 import hre, { ethers } from 'hardhat'
 import path from 'path'
 
-import implementation from '../ignition/modules/Implementation'
+import implementation from '../ignition/modules/implementation'
 import KycManagerModule from '../ignition/modules/kyc_manager'
 
 interface DeployedContracts {
@@ -132,7 +132,7 @@ async function main() {
         // Create ZTLNPrime initialization data
         const ZTLNPrimeFactory = await ethers.getContractFactory('ZTLNPrime')
         const initData = ZTLNPrimeFactory.interface.encodeFunctionData('initialize', [
-            process.env.DEPLOYER_ADDRESS!,
+            process.env.LEDGER_ACCOUNT!,
             process.env.OPERATOR_ADDRESS!,
             process.env.CUSTODIAN_ADDRESS!,
             deployedContracts.kycManager
@@ -148,7 +148,7 @@ async function main() {
 
         // Get Create3 factory instance
         const create3Contract = new ethers.Contract(CREATE3_FACTORY, CREATE3_FACTORY_ABI, deployer)
-        const salt = ethers.id('ZTLN-Prime new 121-1') //chanage to ts
+        const salt = ethers.id('ZTLN-P')
 
         console.log('Getting deterministic address...')
         const deterministicAddress = await create3Contract.addressOf(salt)
