@@ -44,8 +44,8 @@ contract ZTLNPrime is
 
     // Price of each share in the fund in 1e8 precision
     uint256 public price;
-    address public custodian;
-    IKycManager public kycManager;
+    address public _custodian;
+    IKycManager public _kycManager;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -60,14 +60,14 @@ contract ZTLNPrime is
      * @dev Initializes the contract with the given parameters.
      * @param owner Address of the owner.
      * @param operator Address of the operator.
-     * @param _custodian Address of the custodian.
-     * @param _kycManager Address of the KYC manager.
+     * @param custodian Address of the custodian.
+     * @param kycManager Address of the KYC manager.
      */
     function initialize(
         address owner,
         address operator,
-        address _custodian,
-        IKycManager _kycManager
+        address custodian,
+        IKycManager kycManager
     ) public initializer {
         __ERC20_init('Zoth Tokenized Liquid Notes Prime', 'ZTLN-P');
         __ReentrancyGuard_init();
@@ -79,8 +79,8 @@ contract ZTLNPrime is
         _grantRole(OPERATOR_ROLE, operator);
         _setRoleAdmin(OPERATOR_ROLE, DEFAULT_ADMIN_ROLE);
 
-        custodian = _custodian;
-        kycManager = _kycManager;
+        _custodian = custodian;
+        _kycManager = kycManager;
     }
 
     /**
@@ -100,17 +100,17 @@ contract ZTLNPrime is
      * @param newAddress New address of the custodian.
      */
     function setCustodian(address newAddress) external onlyAdmin {
-        custodian = newAddress;
+        _custodian = newAddress;
         emit SetCustodian(newAddress);
     }
 
     /**
      * @dev Sets the KYC manager address.
-     * @param _kycManager New address of the KYC manager.
+     * @param kycManager New address of the KYC manager.
      */
-    function setKycManager(address _kycManager) external onlyAdmin {
-        kycManager = IKycManager(_kycManager);
-        emit SetKycManager(_kycManager);
+    function setKycManager(address kycManager) external onlyAdmin {
+        _kycManager = IKycManager(kycManager);
+        emit SetKycManager(kycManager);
     }
 
     ////////////////////////////////////////////////////////////
@@ -174,12 +174,12 @@ contract ZTLNPrime is
      * @param amount Amount of the asset.
      */
     function transferToCustodian(address asset, uint256 amount) public onlyAdminOrOperator {
-        if (custodian == address(0)) {
-            revert InvalidAddress(custodian);
+        if (_custodian == address(0)) {
+            revert InvalidAddress(_custodian);
         }
 
-        IERC20(asset).safeTransfer(custodian, amount);
-        emit TransferToCustodian(custodian, asset, amount);
+        IERC20(asset).safeTransfer(_custodian, amount);
+        emit TransferToCustodian(_custodian, asset, amount);
     }
 
     /**
@@ -214,8 +214,8 @@ contract ZTLNPrime is
         address asset,
         uint256 amount
     ) public nonReentrant whenNotPaused returns (uint256) {
-        kycManager.onlyKyc(msg.sender);
-        kycManager.onlyNotBanned(msg.sender);
+        _kycManager.onlyKyc(msg.sender);
+        _kycManager.onlyNotBanned(msg.sender);
 
         IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
 
@@ -240,8 +240,8 @@ contract ZTLNPrime is
         uint256 shares,
         address asset
     ) public nonReentrant whenNotPaused returns (uint256) {
-        kycManager.onlyKyc(msg.sender);
-        kycManager.onlyNotBanned(msg.sender);
+        _kycManager.onlyKyc(msg.sender);
+        _kycManager.onlyNotBanned(msg.sender);
 
         IERC20(address(this)).safeTransferFrom(msg.sender, address(this), shares);
 
@@ -286,14 +286,14 @@ contract ZTLNPrime is
         address to,
         uint256 /*value*/
     ) public view override returns (uint8 restrictionCode) {
-        if (kycManager.isBanned(from)) return REVOKED_OR_BANNED_CODE;
-        else if (kycManager.isBanned(to)) return REVOKED_OR_BANNED_CODE;
+        if (_kycManager.isBanned(from)) return REVOKED_OR_BANNED_CODE;
+        else if (_kycManager.isBanned(to)) return REVOKED_OR_BANNED_CODE;
 
-        if (kycManager.isStrict()) {
-            if (!kycManager.isKyc(from)) return DISALLOWED_OR_STOP_CODE;
-            else if (!kycManager.isKyc(to)) return DISALLOWED_OR_STOP_CODE;
-        } else if (kycManager.isUSKyc(from)) {
-            if (!kycManager.isKyc(to)) return DISALLOWED_OR_STOP_CODE;
+        if (_kycManager.isStrict()) {
+            if (!_kycManager.isKyc(from)) return DISALLOWED_OR_STOP_CODE;
+            else if (!_kycManager.isKyc(to)) return DISALLOWED_OR_STOP_CODE;
+        } else if (_kycManager.isUSKyc(from)) {
+            if (!_kycManager.isKyc(to)) return DISALLOWED_OR_STOP_CODE;
         }
         return SUCCESS_CODE;
     }
