@@ -118,6 +118,15 @@ contract ZTLNPrime is
     ////////////////////////////////////////////////////////////
 
     /**
+     * @dev Sets the price of the fund.
+     * @param newPrice New price of the fund.
+     */
+    function setPrice(uint256 newPrice) external onlyAdminOrOperator {
+        price = newPrice;
+        emit SetPrice(newPrice);
+    }
+
+    /**
      * @dev Pauses the contract.
      */
     function pause() external onlyAdminOrOperator {

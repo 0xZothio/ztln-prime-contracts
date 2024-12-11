@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 interface IFundVaultEventsV3 {
     event SetCustodian(address newAddress);
     event SetKycManager(address kycManager);
-    event SetFundNav(uint256 nav);
+    event SetPrice(uint256 newPrice);
 
     event TransferToCustodian(address receiver, address asset, uint256 amount);
 
